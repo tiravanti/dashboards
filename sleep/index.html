@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Sleep &amp; Rest</title>
+<link rel="stylesheet" href="../assets/portal.css">
+<link rel="stylesheet" href="sleep.css">
+</head>
+<body>
+<div class="wrap">
+
+  <section id="gate" class="gate" hidden>
+    <h1>Sleep &amp; Rest</h1>
+    <p>Private. Sign in with the authorised Google account to continue.</p>
+    <div class="g-btn" id="gSignIn"></div>
+    <div class="msg" id="gateMsg" role="alert"></div>
+  </section>
+
+  <div id="app" hidden>
+    <header class="topbar">
+      <nav><a class="brand" href="../">Dashboards</a><a href="./" aria-current="page">Sleep</a></nav>
+      <div class="who"><span id="who"></span><button class="btn" id="signOut" type="button">Sign out</button></div>
+    </header>
+
+    <header class="page">
+      <div>
+        <h1>Sleep &amp; Rest</h1>
+        <div class="sub" id="subLine">Europe/Rome</div>
+      </div>
+      <div class="tag-today" id="todayTag"></div>
+    </header>
+
+    <div id="banner" class="banner" hidden role="status"></div>
+
+    <div id="loading" class="empty">Loading from Google Calendar…</div>
+
+    <main id="dash" hidden>
+      <div class="hero">
+        <div class="card" id="lastNightCard"></div>
+        <div class="card" id="tonightCard"></div>
+        <div class="card avg-card" id="avgCard"></div>
+      </div>
+
+      <div class="section-title-row">
+        <div class="section-title" id="weekSectionTitle">This week</div>
+        <div class="week-nav">
+          <button type="button" class="btn" id="weekPrevBtn" aria-label="Previous week">‹</button>
+          <button type="button" class="btn week-nav-current" id="weekCurrentBtn">Current week</button>
+          <button type="button" class="btn" id="weekNextBtn" aria-label="Next week">›</button>
+        </div>
+      </div>
+      <div class="card chart-card">
+        <div class="chart-wrap" id="weekChart"></div>
+        <div class="chart-meta"><span>Planned vs logged time asleep, with <span id="floorLabel">6h30</span> floor · light = planned, dark = logged</span><span id="weekRangeLabel"></span></div>
+        <div class="week-delta-strip" id="weekDeltaStrip"></div>
+      </div>
+
+      <div class="section-title">Cumulative, last 7 nights</div>
+      <div class="card chart-card">
+        <div class="cumulative-stats" id="cumulativeStats"></div>
+        <div class="chart-wrap" style="height:190px" id="cumulativeChart"></div>
+        <div class="chart-meta"><span>Running total of planned (dashed) vs logged asleep hours over a rolling 7-night window (not the calendar week above)</span><span id="cumulativeRange"></span></div>
+      </div>
+
+      <div class="section-title">7-night moving average — time asleep</div>
+      <div class="card chart-card">
+        <div class="chart-wrap" style="height:160px" id="movingAvgChart"></div>
+        <div class="chart-meta"><span>Trailing average over the last 7 logged nights (nights with no entry are skipped, not counted as zero) · dashed line = floor</span><span id="movingAvgRange"></span></div>
+      </div>
+
+      <div class="two-col" style="margin-top:14px">
+        <div class="card chart-card"><h2>Sleep score · last 14 scored nights</h2><div class="chart-wrap" style="height:160px" id="scoreChart"></div></div>
+        <div class="card chart-card"><h2>Bedtime consistency</h2><div class="chart-wrap" style="height:160px" id="bedtimeChart"></div></div>
+      </div>
+
+      <div class="section-title">Recent nights</div>
+      <div class="card"><div class="table-scroll">
+        <table class="log-table">
+          <thead><tr><th>Night</th><th>In bed</th><th>Asleep</th><th>Score</th><th>Δ vs plan</th><th>Context</th></tr></thead>
+          <tbody id="logBody"></tbody>
+          <tfoot id="logFoot"></tfoot>
+        </table>
+      </div></div>
+    </main>
+
+    <footer class="foot"><span id="footStamp"></span><button class="btn" id="refreshBtn" type="button">Refresh</button></footer>
+  </div>
+
+</div>
+<script src="../config.js"></script>
+<script src="../assets/auth.js"></script>
+<script src="demo.js"></script>
+<script src="sleep.js"></script>
+</body>
+</html>

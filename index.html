@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>Dashboards</title>
+<link rel="stylesheet" href="assets/portal.css">
+</head>
+<body>
+<div class="wrap">
+
+  <section id="gate" class="gate" hidden>
+    <h1>Dashboards</h1>
+    <p>Private. Sign in with the authorised Google account to continue.</p>
+    <div class="g-btn" id="gSignIn"></div>
+    <div class="msg" id="gateMsg" role="alert"></div>
+  </section>
+
+  <div id="app" hidden>
+    <header class="topbar">
+      <nav><a class="brand" href="./" aria-current="page">Dashboards</a><a href="sleep/">Sleep</a></nav>
+      <div class="who"><span id="who"></span><button class="btn" id="signOut" type="button">Sign out</button></div>
+    </header>
+
+    <div class="tiles">
+      <a class="card tile" href="sleep/"><h3>Sleep &amp; Rest</h3><p>Planned vs logged sleep, scores, trends — live from Google Calendar.</p><span class="badge live">Live</span></a>
+      <div class="card tile soon"><h3>Training</h3><p>Swim, cycling and dryland volume.</p><span class="badge">Planned</span></div>
+      <div class="card tile soon"><h3>Tango</h3><p>Classes, milongas, progression.</p><span class="badge">Planned</span></div>
+      <div class="card tile soon"><h3>Logistics</h3><p>Travel legs, timetables, cut-offs.</p><span class="badge">Planned</span></div>
+      <div class="card tile soon"><h3>Work</h3><p>School and consulting load.</p><span class="badge">Planned</span></div>
+      <div class="card tile soon"><h3>MIR</h3><p>Refit progress and weather windows.</p><span class="badge">Planned</span></div>
+    </div>
+  </div>
+
+</div>
+<script src="config.js"></script>
+<script src="assets/auth.js"></script>
+<script>
+  Portal.init({
+    signedIn: function (t, p) {
+      document.getElementById('gate').hidden = true;
+      document.getElementById('app').hidden = false;
+      document.getElementById('who').textContent = p && p.email ? p.email : '';
+    },
+    signedOut: function () {
+      document.getElementById('app').hidden = true;
+      document.getElementById('gate').hidden = false;
+    }
+  });
+  document.getElementById('signOut').addEventListener('click', function () { Portal.signOut(); });
+</script>
+</body>
+</html>
