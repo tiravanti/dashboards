@@ -127,8 +127,11 @@
       return (i ? '<div class="plan-divider"></div>' : '') + '<div class="plan-row"><div class="icon">' + r[0] + '</div><div class="time">' + esc(r[1]) + '</div><div class="label">' + esc(r[2]) + '</div></div>';
     }).join('') + '</div>';
     var vs = n.plannedHours - M.floor;
-    h += '<div class="plan-foot"><span>Target <b>' + hFmt(n.plannedHours) + '</b></span><span>vs floor <b>' + fmtDelta(vs) + '</b></span>' +
-      (n.plannedNote ? '<span>' + esc(n.plannedNote) + '</span>' : '') + '</div>';
+    h += '<div class="plan-foot"><span>Target <b>' + hFmt(n.plannedHours) + '</b></span><span>vs floor <b>' + fmtDelta(vs) + '</b></span></div>';
+    if (n.plannedNote) {
+      var shortNote = n.plannedNote.length > 150 ? n.plannedNote.slice(0, 150).replace(/\s+\S*$/, '') + '…' : n.plannedNote;
+      h += '<div class="plan-note" title="' + esc(n.plannedNote) + '">' + esc(shortNote) + '</div>';
+    }
     if (data.nsdr) {
       var today = data.nsdr.filter(function (x) { return x.date === data.today; })[0];
       var next = data.nsdr.filter(function (x) { return x.date > data.today; })[0];
