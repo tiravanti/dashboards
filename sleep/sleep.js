@@ -261,18 +261,18 @@
     var W = el.clientWidth || 600, H = el.clientHeight || 220, padL = 34, padR = 10, padT = 10, padB = 26;
     var plotW = W - padL - padR, plotH = H - padT - padB;
     var vals = [].concat(A, B, [opts.floor]).filter(function (v) { return v != null; });
-    var max = Math.max.apply(null, vals) * 1.15, groupW = plotW / labels.length, barW = Math.min(18, groupW * 0.32);
+    var max = Math.max(2, Math.ceil((Math.max.apply(null, vals) + 0.25) / 2) * 2), groupW = plotW / labels.length, barW = Math.min(18, groupW * 0.32);
     function y(v) { return padT + plotH - (v / max) * plotH; }
     var svg = svgEl('svg', { viewBox: '0 0 ' + W + ' ' + H, width: '100%', height: '100%', preserveAspectRatio: 'none', role: 'img', 'aria-label': 'Planned vs logged sleep per night' });
-    for (var g = 0; g <= 4; g++) {
-      var gy = y(max * g / 4);
+    for (var g = 0; g <= max; g += 2) {
+      var gy = y(g);
       svg.appendChild(svgEl('line', { x1: padL, x2: W - padR, y1: gy, y2: gy, stroke: cssVar('--border'), 'stroke-width': 1 }));
-      txt(svg, padL - 6, gy + 3, 'end', 10, (max * g / 4).toFixed(0) + 'h');
+      txt(svg, padL - 6, gy + 3, 'end', 10, g + 'h');
     }
     if (opts.floor != null) svg.appendChild(svgEl('line', { x1: padL, x2: W - padR, y1: y(opts.floor), y2: y(opts.floor), stroke: cssVar('--warn'), 'stroke-width': 1.5, 'stroke-dasharray': '4,4' }));
     labels.forEach(function (label, i) {
       var cx = padL + groupW * i + groupW / 2;
-      if (A[i] != null) svg.appendChild(svgEl('rect', { x: cx - barW - 2, y: y(A[i]), width: barW, height: Math.max(0, y(0) - y(A[i])), rx: 3, fill: cssVar('--accent-soft') }));
+      if (A[i] != null) svg.appendChild(svgEl('rect', { x: cx - barW - 2, y: y(A[i]), width: barW, height: Math.max(0, y(0) - y(A[i])), rx: 3, fill: cssVar('--accent-soft'), stroke: cssVar('--accent'), 'stroke-width': 1, 'stroke-dasharray': '3 2' }));
       if (B[i] != null) svg.appendChild(svgEl('rect', { x: cx + 2, y: y(B[i]), width: barW, height: Math.max(0, y(0) - y(B[i])), rx: 3, fill: cssVar('--accent') }));
       txt(svg, cx, H - 8, 'middle', 10.5, label);
     });
