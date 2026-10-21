@@ -63,6 +63,11 @@
     }
     return { main: main, naps: Math.max(0, total - main), mainEst: mainEst, napEst: napEst };
   }
+  function plannedSplit(n) {
+    var pb = n && n.plannedBlocks, total = n.plannedHours, main = total;
+    if (pb && pb.length > 1) { main = 0; pb.forEach(function (b) { if ((b.hours || 0) > main) main = b.hours; }); }
+    return { main: main, naps: Math.max(0, total - main) };
+  }
   function star(on) { return on ? '<abbr title="' + EST_TITLE + '">*</abbr>' : ''; }
 
   function slipFlag(n) {
@@ -105,17 +110,19 @@
   }
 
   function weekData(M, today, offset) {
-    var mon = addDays(mondayOf(today), offset * 7), days = [], planned = [], logged = [], nights = [];
+    var mon = addDays(mondayOf(today), offset * 7), days = [], planned = [], logged = [], nights = [], pSplit = [], lSplit = [];
     for (var i = 0; i < 7; i++) {
       var d = addDays(mon, i), n = M.by[d];
       days.push(dayLabel(d)); nights.push(n || null);
       planned.push(n && n.plannedHours != null ? n.plannedHours : null);
       logged.push(n && n.asleepHours != null ? n.asleepHours : null);
+      pSplit.push(n && n.plannedHours != null ? plannedSplit(n) : null);
+      lSplit.push(n && n.asleepHours != null ? splitOf(n) : null);
     }
     var sun = addDays(mon, 6), a = parseYmd(mon), b = parseYmd(sun);
     var label = DOW[a.getUTCDay()] + ' ' + a.getUTCDate() + (a.getUTCMonth() !== b.getUTCMonth() ? ' ' + MON[a.getUTCMonth()] : '') +
       ' – ' + DOW[b.getUTCDay()] + ' ' + b.getUTCDate() + ' ' + MON[b.getUTCMonth()];
-    return { days: days, planned: planned, logged: logged, nights: nights, label: label };
+    return { days: days, planned: planned, logged: logged, nights: nights, pSplit: pSplit, lSplit: lSplit, label: label };
   }
 
   // ───────── render: hero ─────────
@@ -218,7 +225,7 @@
     var has = wk.planned.concat(wk.logged).some(function (v) { return v != null; });
     var chart = $('weekChart');
     if (!has) chart.innerHTML = '<div class="empty" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">No data for this week yet</div>';
-    else drawBarChart('weekChart', wk.days, wk.planned, wk.logged, { floor: M.floor, popup: function (kind, i) { return barPopupHtml(kind, wk.nights[i], M.floor); } });
+    else drawBarChart('weekChart', wk.days, wk.planned, wk.logged, { floor: M.floor, splitA: wk.pSplit, splitB: wk.lSplit, popup: function (kind, i) { return barPopupHtml(kind, wk.nights[i], M.floor); } });
     var strip = $('weekDeltaStrip'); strip.innerHTML = '';
     wk.days.forEach(function (day, i) {
       var p = wk.planned[i], l = wk.logged[i], ok = p != null && l != null, d = ok ? l - p : 0, cls = ok ? deltaClass(d) : 'flat';
@@ -322,7 +329,9 @@
         rows += '<div class="bp-row"><span class="bp-k">' + (pb.length > 1 ? 'Sleep ' + (i + 1) : 'Sleep') + '</span><span>' + esc(b.start) + ' → ' + esc(b.end) +
           (b.hours != null ? ' · ' + hFmt(b.hours) : '') + '</span></div>';
       });
+      var ps = plannedSplit(n);
       rows += '<div class="bp-row bp-total"><span class="bp-k">Total</span><span>' + hFmt(n.plannedHours) + ' · ' + fmtDelta(n.plannedHours - floor) + ' vs floor</span></div>';
+      if (ps.naps > 0.0084) rows += '<div class="bp-row"><span class="bp-k">Night / naps</span><span>' + hFmt(ps.main) + ' + ' + hFmt(ps.naps) + '</span></div>';
       h += rows;
       if (n.plannedNote) h += '<div class="bp-note">' + esc(n.plannedNote.length > 220 ? n.plannedNote.slice(0, 220).replace(/\s+\S*$/, '') + '…' : n.plannedNote) + '</div>';
     } else {
@@ -333,7 +342,9 @@
         rows += '<div class="bp-row"><span class="bp-k">' + (lb.length > 1 ? 'Sleep ' + (i + 1) : 'Sleep') + '</span><span>' + esc(b.start) + ' → ' + esc(b.end) +
           (b.asleepHours != null ? ' · asleep ' + hFmt(b.asleepHours) + est : '') + '</span></div>';
       });
+      var ls = splitOf(n);
       rows += '<div class="bp-row bp-total"><span class="bp-k">Total</span><span>asleep ' + hFmt(n.asleepHours) + (n.inBedHours != null ? ' · in bed ' + hFmt(n.inBedHours) : '') + '</span></div>';
+      if (ls.naps > 0.0084) rows += '<div class="bp-row"><span class="bp-k">Night / naps</span><span>' + hFmt(ls.main) + star(ls.mainEst) + ' + ' + hFmt(ls.naps) + star(ls.napEst) + '</span></div>';
       h += rows;
       if (n.score != null) h += '<div class="bp-row"><span class="bp-k">Score</span><span>' + n.score + ' / 100</span></div>';
       if (n.plannedHours != null) { var d = n.asleepHours - n.plannedHours; h += '<div class="bp-row"><span class="bp-k">vs plan</span><span>' + fmtDelta(d) + ' (' + fmtPct(d, n.plannedHours) + ')</span></div>'; }
@@ -368,6 +379,14 @@
     var max = Math.max(2, Math.ceil((Math.max.apply(null, vals) + 0.25) / 2) * 2), groupW = plotW / labels.length, barW = Math.min(18, groupW * 0.32);
     function y(v) { return padT + plotH - (v / max) * plotH; }
     var svg = svgEl('svg', { viewBox: '0 0 ' + W + ' ' + H, width: '100%', height: '100%', preserveAspectRatio: 'none', role: 'img', 'aria-label': 'Planned vs logged sleep per night' });
+    var defs = svgEl('defs');
+    [['napPlanned', cssVar('--accent-soft'), 0.9], ['napLogged', cssVar('--accent-soft'), 1]].forEach(function (p) {
+      var pat = svgEl('pattern', { id: p[0], width: 5, height: 5, patternUnits: 'userSpaceOnUse', patternTransform: 'rotate(45)' });
+      pat.appendChild(svgEl('rect', { width: 5, height: 5, fill: p[1] }));
+      pat.appendChild(svgEl('line', { x1: 0, y1: 0, x2: 0, y2: 5, stroke: cssVar('--accent'), 'stroke-width': 2, 'stroke-opacity': p[2] }));
+      defs.appendChild(pat);
+    });
+    svg.appendChild(defs);
     for (var g = 0; g <= max; g += 2) {
       var gy = y(g);
       svg.appendChild(svgEl('line', { x1: padL, x2: W - padR, y1: gy, y2: gy, stroke: cssVar('--border'), 'stroke-width': 1 }));
@@ -376,21 +395,37 @@
     if (opts.floor != null) svg.appendChild(svgEl('line', { x1: padL, x2: W - padR, y1: y(opts.floor), y2: y(opts.floor), stroke: cssVar('--warn'), 'stroke-width': 1.5, 'stroke-dasharray': '4,4' }));
     labels.forEach(function (label, i) {
       var cx = padL + groupW * i + groupW / 2;
-      function hook(rect, kind, hx, hw) {
+      function hook(g, kind, hx, hw) {
         if (!opts.popup) return;
-        rect.setAttribute('data-bar', kind); rect.style.cursor = 'pointer';
-        var go = function (ev) { ev.stopPropagation(); showPopup(el, rect, opts.popup(kind, i)); };
-        rect.addEventListener('click', go);
-        rect.setAttribute('tabindex', '0'); rect.setAttribute('role', 'button');
-        rect.setAttribute('aria-label', (kind === 'planned' ? 'Planned' : 'Logged') + ' sleep, ' + label);
-        rect.addEventListener('keydown', function (ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); go(ev); } });
+        g.setAttribute('data-bar', kind); g.style.cursor = 'pointer';
+        var go = function (ev) { ev.stopPropagation(); showPopup(el, g, opts.popup(kind, i)); };
+        g.addEventListener('click', go);
+        g.setAttribute('tabindex', '0'); g.setAttribute('role', 'button');
+        g.setAttribute('aria-label', (kind === 'planned' ? 'Planned' : 'Logged') + ' sleep, ' + label);
+        g.addEventListener('keydown', function (ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); go(ev); } });
         // wider invisible target spanning the whole column half, so thin bars are easy to hit
         var hit = svgEl('rect', { x: hx, y: padT, width: hw, height: plotH, fill: 'transparent', 'data-bar': kind });
         hit.style.cursor = 'pointer'; hit.addEventListener('click', go);
         svg.appendChild(hit);
       }
-      if (A[i] != null) { var ra = svgEl('rect', { x: cx - barW - 2, y: y(A[i]), width: barW, height: Math.max(0, y(0) - y(A[i])), rx: 3, fill: cssVar('--accent-soft'), stroke: cssVar('--accent'), 'stroke-width': 1, 'stroke-dasharray': '3 2' }); svg.appendChild(ra); hook(ra, 'planned', cx - groupW / 2 + 2, groupW / 2 - 2); }
-      if (B[i] != null) { var rb = svgEl('rect', { x: cx + 2, y: y(B[i]), width: barW, height: Math.max(0, y(0) - y(B[i])), rx: 3, fill: cssVar('--accent') }); svg.appendChild(rb); hook(rb, 'logged', cx, groupW / 2 - 2); }
+      // One bar = night sleep (bottom) + naps (top, hatched). planned: dashed outline; logged: solid.
+      function stack(kind, total, split, x) {
+        var planned = kind === 'planned', main = split ? Math.min(split.main, total) : total, naps = Math.max(0, total - main);
+        var g = svgEl('g'), gap = naps > 0.05 && main > 0.05 ? 1.5 : 0, base = y(0);
+        var body = { x: x, y: y(main), width: barW, height: Math.max(0, base - y(main)), rx: 3,
+          fill: planned ? cssVar('--accent-soft') : cssVar('--accent') };
+        if (planned) { body.stroke = cssVar('--accent'); body['stroke-width'] = 1; body['stroke-dasharray'] = '3 2'; }
+        g.appendChild(svgEl('rect', body));
+        if (naps > 0.05) {
+          var top = y(total), h = Math.max(0, y(main) - top - gap);
+          var nap = { x: x, y: top, width: barW, height: h, rx: 3, fill: 'url(#' + (planned ? 'napPlanned' : 'napLogged') + ')', stroke: cssVar('--accent'), 'stroke-width': 1 };
+          if (planned) nap['stroke-dasharray'] = '3 2';
+          g.appendChild(svgEl('rect', nap));
+        }
+        svg.appendChild(g); return g;
+      }
+      if (A[i] != null) hook(stack('planned', A[i], opts.splitA && opts.splitA[i], cx - barW - 2), 'planned', cx - groupW / 2 + 2, groupW / 2 - 2);
+      if (B[i] != null) hook(stack('logged', B[i], opts.splitB && opts.splitB[i], cx + 2), 'logged', cx, groupW / 2 - 2);
       txt(svg, cx, H - 8, 'middle', 10.5, label);
     });
     el.innerHTML = ''; el.appendChild(svg);
