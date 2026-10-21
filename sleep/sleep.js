@@ -92,17 +92,17 @@
   }
 
   function weekData(M, today, offset) {
-    var mon = addDays(mondayOf(today), offset * 7), days = [], planned = [], logged = [];
+    var mon = addDays(mondayOf(today), offset * 7), days = [], planned = [], logged = [], nights = [];
     for (var i = 0; i < 7; i++) {
       var d = addDays(mon, i), n = M.by[d];
-      days.push(dayLabel(d));
+      days.push(dayLabel(d)); nights.push(n || null);
       planned.push(n && n.plannedHours != null ? n.plannedHours : null);
       logged.push(n && n.asleepHours != null ? n.asleepHours : null);
     }
     var sun = addDays(mon, 6), a = parseYmd(mon), b = parseYmd(sun);
     var label = DOW[a.getUTCDay()] + ' ' + a.getUTCDate() + (a.getUTCMonth() !== b.getUTCMonth() ? ' ' + MON[a.getUTCMonth()] : '') +
       ' – ' + DOW[b.getUTCDay()] + ' ' + b.getUTCDate() + ' ' + MON[b.getUTCMonth()];
-    return { days: days, planned: planned, logged: logged, label: label };
+    return { days: days, planned: planned, logged: logged, nights: nights, label: label };
   }
 
   // ───────── render: hero ─────────
@@ -205,7 +205,7 @@
     var has = wk.planned.concat(wk.logged).some(function (v) { return v != null; });
     var chart = $('weekChart');
     if (!has) chart.innerHTML = '<div class="empty" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center">No data for this week yet</div>';
-    else drawBarChart('weekChart', wk.days, wk.planned, wk.logged, { floor: M.floor });
+    else drawBarChart('weekChart', wk.days, wk.planned, wk.logged, { floor: M.floor, popup: function (kind, i) { return barPopupHtml(kind, wk.nights[i], M.floor); } });
     var strip = $('weekDeltaStrip'); strip.innerHTML = '';
     wk.days.forEach(function (day, i) {
       var p = wk.planned[i], l = wk.logged[i], ok = p != null && l != null, d = ok ? l - p : 0, cls = ok ? deltaClass(d) : 'flat';
@@ -289,6 +289,57 @@
   function svgEl(tag, attrs) { var e = document.createElementNS(SVGNS, tag); for (var k in attrs) e.setAttribute(k, attrs[k]); return e; }
   function txt(svg, x, y, anchor, size, str) { var t = svgEl('text', { x: x, y: y, 'text-anchor': anchor, 'font-size': size, fill: cssVar('--text-faint') }); t.textContent = str; svg.appendChild(t); }
 
+  // ───────── bar popup ─────────
+  function nightTitle(n) { return esc(dayLabel(n.date) + ' → ' + dayLabel(addDays(n.date, 1))); }
+  function barPopupHtml(kind, n, floor) {
+    if (!n) return '';
+    var h = '', rows = '';
+    if (kind === 'planned') {
+      var pb = blocksOf(n, 'planned');
+      h += '<div class="bp-title">Planned <span>' + nightTitle(n) + '</span></div>';
+      if (n.windDownStart) rows += '<div class="bp-row"><span class="bp-k">Wind-down</span><span>' + esc(n.windDownStart) + '</span></div>';
+      pb.forEach(function (b, i) {
+        rows += '<div class="bp-row"><span class="bp-k">' + (pb.length > 1 ? 'Sleep ' + (i + 1) : 'Sleep') + '</span><span>' + esc(b.start) + ' → ' + esc(b.end) +
+          (b.hours != null ? ' · ' + hFmt(b.hours) : '') + '</span></div>';
+      });
+      rows += '<div class="bp-row bp-total"><span class="bp-k">Total</span><span>' + hFmt(n.plannedHours) + ' · ' + fmtDelta(n.plannedHours - floor) + ' vs floor</span></div>';
+      h += rows;
+      if (n.plannedNote) h += '<div class="bp-note">' + esc(n.plannedNote.length > 220 ? n.plannedNote.slice(0, 220).replace(/\s+\S*$/, '') + '…' : n.plannedNote) + '</div>';
+    } else {
+      var lb = blocksOf(n, 'logged');
+      h += '<div class="bp-title">Logged <span>' + nightTitle(n) + '</span></div>';
+      lb.forEach(function (b, i) {
+        var est = b.asleepFromDuration ? '<abbr title="' + EST_TITLE + '">*</abbr>' : '';
+        rows += '<div class="bp-row"><span class="bp-k">' + (lb.length > 1 ? 'Sleep ' + (i + 1) : 'Sleep') + '</span><span>' + esc(b.start) + ' → ' + esc(b.end) +
+          (b.asleepHours != null ? ' · asleep ' + hFmt(b.asleepHours) + est : '') + '</span></div>';
+      });
+      rows += '<div class="bp-row bp-total"><span class="bp-k">Total</span><span>asleep ' + hFmt(n.asleepHours) + (n.inBedHours != null ? ' · in bed ' + hFmt(n.inBedHours) : '') + '</span></div>';
+      h += rows;
+      if (n.score != null) h += '<div class="bp-row"><span class="bp-k">Score</span><span>' + n.score + ' / 100</span></div>';
+      if (n.plannedHours != null) { var d = n.asleepHours - n.plannedHours; h += '<div class="bp-row"><span class="bp-k">vs plan</span><span>' + fmtDelta(d) + ' (' + fmtPct(d, n.plannedHours) + ')</span></div>'; }
+      if (n.note) h += '<div class="bp-note">' + esc(n.note) + '</div>';
+    }
+    return h;
+  }
+
+  var popClose = null;
+  function closePopup() { if (popClose) { popClose(); popClose = null; } }
+  document.addEventListener('click', function (e) { if (!e.target.closest || !e.target.closest('.bar-pop, [data-bar]')) closePopup(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closePopup(); });
+
+  function showPopup(wrap, anchor, html) {
+    closePopup();
+    if (!html) return;
+    var pop = document.createElement('div'); pop.className = 'bar-pop'; pop.setAttribute('role', 'dialog'); pop.innerHTML = html;
+    wrap.appendChild(pop);
+    var wr = wrap.getBoundingClientRect(), ar = anchor.getBoundingClientRect(), pw = pop.offsetWidth, ph = pop.offsetHeight;
+    var left = ar.left - wr.left + ar.width / 2 - pw / 2; left = Math.max(0, Math.min(left, wr.width - pw));
+    var top = ar.top - wr.top - ph - 8; if (top < 0) top = Math.min(ar.top - wr.top + 8, Math.max(0, wr.height - ph));
+    pop.style.left = left + 'px'; pop.style.top = top + 'px';
+    anchor.classList.add('bar-active');
+    popClose = function () { pop.remove(); anchor.classList.remove('bar-active'); };
+  }
+
   function drawBarChart(id, labels, A, B, opts) {
     var el = $(id); if (!el) return;
     var W = el.clientWidth || 600, H = el.clientHeight || 220, padL = 34, padR = 10, padT = 10, padB = 26;
@@ -305,8 +356,21 @@
     if (opts.floor != null) svg.appendChild(svgEl('line', { x1: padL, x2: W - padR, y1: y(opts.floor), y2: y(opts.floor), stroke: cssVar('--warn'), 'stroke-width': 1.5, 'stroke-dasharray': '4,4' }));
     labels.forEach(function (label, i) {
       var cx = padL + groupW * i + groupW / 2;
-      if (A[i] != null) svg.appendChild(svgEl('rect', { x: cx - barW - 2, y: y(A[i]), width: barW, height: Math.max(0, y(0) - y(A[i])), rx: 3, fill: cssVar('--accent-soft'), stroke: cssVar('--accent'), 'stroke-width': 1, 'stroke-dasharray': '3 2' }));
-      if (B[i] != null) svg.appendChild(svgEl('rect', { x: cx + 2, y: y(B[i]), width: barW, height: Math.max(0, y(0) - y(B[i])), rx: 3, fill: cssVar('--accent') }));
+      function hook(rect, kind, hx, hw) {
+        if (!opts.popup) return;
+        rect.setAttribute('data-bar', kind); rect.style.cursor = 'pointer';
+        var go = function (ev) { ev.stopPropagation(); showPopup(el, rect, opts.popup(kind, i)); };
+        rect.addEventListener('click', go);
+        rect.setAttribute('tabindex', '0'); rect.setAttribute('role', 'button');
+        rect.setAttribute('aria-label', (kind === 'planned' ? 'Planned' : 'Logged') + ' sleep, ' + label);
+        rect.addEventListener('keydown', function (ev) { if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); go(ev); } });
+        // wider invisible target spanning the whole column half, so thin bars are easy to hit
+        var hit = svgEl('rect', { x: hx, y: padT, width: hw, height: plotH, fill: 'transparent', 'data-bar': kind });
+        hit.style.cursor = 'pointer'; hit.addEventListener('click', go);
+        svg.appendChild(hit);
+      }
+      if (A[i] != null) { var ra = svgEl('rect', { x: cx - barW - 2, y: y(A[i]), width: barW, height: Math.max(0, y(0) - y(A[i])), rx: 3, fill: cssVar('--accent-soft'), stroke: cssVar('--accent'), 'stroke-width': 1, 'stroke-dasharray': '3 2' }); svg.appendChild(ra); hook(ra, 'planned', cx - groupW / 2 + 2, groupW / 2 - 2); }
+      if (B[i] != null) { var rb = svgEl('rect', { x: cx + 2, y: y(B[i]), width: barW, height: Math.max(0, y(0) - y(B[i])), rx: 3, fill: cssVar('--accent') }); svg.appendChild(rb); hook(rb, 'logged', cx, groupW / 2 - 2); }
       txt(svg, cx, H - 8, 'middle', 10.5, label);
     });
     el.innerHTML = ''; el.appendChild(svg);
