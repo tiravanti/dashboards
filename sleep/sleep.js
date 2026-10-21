@@ -39,6 +39,19 @@
   function minLabel(m) { return m < 60 ? m + 'min' : Math.floor(m / 60) + 'h' + pad2(m % 60); }
   function arrow(cls) { return cls === 'neg' ? '▼ ' : (cls === 'pos' ? '▲ ' : ''); }
 
+  // A night can hold several sleep blocks (main night + naps / split sleep). Older payloads have none.
+  function blocksOf(n, kind) {
+    var b = n && n[kind + 'Blocks'];
+    if (b && b.length) return b;
+    if (kind === 'logged') return n && n.loggedStart ? [{ start: n.loggedStart, end: n.loggedEnd }] : [];
+    return n && n.plannedStart ? [{ start: n.plannedStart, end: n.plannedEnd, hours: n.plannedHours }] : [];
+  }
+  function rangesLabel(blocks) { return blocks.map(function (b) { return b.start + '–' + b.end; }).join(' + '); }
+  function hasNightBlock(n) {      // a block that starts in the evening or night, not a daytime nap
+    return blocksOf(n, 'logged').some(function (b) { var h = +b.start.split(':')[0]; return h >= 18 || h < 12; });
+  }
+  var EST_TITLE = 'No Polar data in the event — time in bed used';
+
   function slipFlag(n) {
     if (!n || !n.plannedStart || !n.loggedStart) return null;
     var diff = bedMinutes(n.loggedStart) - bedMinutes(n.plannedStart);
@@ -51,7 +64,15 @@
   // ───────── data → model ─────────
   function buildModel(data) {
     var by = {};
-    data.nights.forEach(function (n) { by[n.date] = n; });
+    data.nights.forEach(function (n) {
+      // Today's sleep-day only holds a nap until tonight is logged: don't count that as "last night".
+      if (n.date === data.today && n.asleepHours != null && !hasNightBlock(n)) {
+        n = Object.assign({}, n, { loggedStart: null, loggedEnd: null, inBedHours: null, asleepHours: null, asleepFromDuration: false,
+          score: null, stages: null, quality: null, note: null, napsToday: n.loggedBlocks });
+      }
+      by[n.date] = n;
+    });
+    data.nights = data.nights.map(function (n) { return by[n.date]; });
     var logged = data.nights.filter(function (n) { return n.asleepHours != null && n.date <= data.today; })
       .sort(function (a, b) { return a.date < b.date ? -1 : 1; });
     var last = logged.length ? logged[logged.length - 1] : null;
@@ -88,10 +109,11 @@
   function renderLastNight(M) {
     var n = M.last, el = $('lastNightCard');
     if (!n) { el.innerHTML = '<h2>Last night · logged</h2><div class="empty">No logged nights in this window yet.</div>'; return; }
-    var star = n.asleepFromDuration ? '<abbr title="No Polar data in the event — time in bed used">*</abbr>' : '';
+    var star = n.asleepFromDuration ? '<abbr title="' + EST_TITLE + '">*</abbr>' : '';
+    var lb = blocksOf(n, 'logged'), multi = lb.length > 1;
     var plannedH = n.plannedHours, h = '<h2>Last night · logged <span style="text-transform:none;letter-spacing:0;font-weight:500">· ' + esc(dayLabel(n.date)) + '</span></h2>';
     h += '<div class="last-night-top"><div><div class="big-stat">' + hFmt(n.inBedHours) + '<small>in bed</small></div>' +
-      '<div class="range-row">' + esc(n.loggedStart) + ' <span class="dot"></span> ' + esc(n.loggedEnd) + ' <span class="dot"></span> asleep ~' + hFmt(n.asleepHours) + star + '</div></div>';
+      '<div class="range-row">' + esc(multi ? rangesLabel(lb) : n.loggedStart + ' · ' + n.loggedEnd).replace(' · ', ' <span class="dot"></span> ') + ' <span class="dot"></span> asleep ~' + hFmt(n.asleepHours) + star + '</div></div>';
     if (n.score != null) h += '<span class="score-pill ' + scoreClass(n.score) + '">' + n.score + ' / 100</span>';
     h += '</div>';
     if (plannedH != null) {
@@ -99,15 +121,16 @@
       h += '<div class="delta-row"><span class="vs">vs planned ' + hFmt(plannedH) + '</span><span class="delta-pill ' + cls + '">' + arrow(cls) + fmtDelta(d) +
         '<span class="delta-pct">(' + fmtPct(d, plannedH) + ')</span></span></div>';
     }
-    var s = n.stages;
-    if (s && n.inBedHours) {
-      var pc = function (v) { return (Math.max(0, v) / n.inBedHours * 100).toFixed(1) + '%'; };
+    var s = n.stages, stTotal = s ? s.lightHours + s.deepHours + s.remHours + s.interruptionsHours : 0;
+    if (s && stTotal > 0) {
+      var pc = function (v) { return (Math.max(0, v) / stTotal * 100).toFixed(1) + '%'; };
       h += '<div class="stage-bar"><div class="light" style="width:' + pc(s.lightHours) + '"></div><div class="deep" style="width:' + pc(s.deepHours) +
         '"></div><div class="rem" style="width:' + pc(s.remHours) + '"></div><div class="awake" style="width:' + pc(s.interruptionsHours) + '"></div></div>' +
         '<div class="stage-legend"><span><i class="swatch-light"></i>Light ' + hFmt(s.lightHours) + '</span><span><i class="swatch-deep"></i>Deep ' + hFmt(s.deepHours) +
         '</span><span><i class="swatch-rem"></i>REM ' + hFmt(s.remHours) + '</span><span><i class="swatch-awake"></i>Interruptions ' + hFmt(s.interruptionsHours) + '</span></div>';
     }
     var flags = [], slip = slipFlag(n);
+    if (multi) flags.push('<span class="flag">' + lb.length + ' sleep blocks: ' + esc(lb.map(function (b) { return hFmt(b.asleepHours != null ? b.asleepHours : 0); }).join(' + ')) + '</span>');
     if (slip) flags.push('<span class="flag shortfall">' + esc(slip) + '</span>');
     if (n.quality) flags.push('<span class="flag">' + esc(n.quality) + '</span>');
     if (n.note) flags.push('<span class="flag">' + esc(n.note) + '</span>');
@@ -120,14 +143,24 @@
     var h = '<h2>Tonight · planned</h2>';
     if (!n || n.plannedHours == null) { el.innerHTML = h + '<div class="empty">Nothing planned for tonight yet.</div>'; return; }
     var rows = [];
-    if (n.windDownStart) rows.push(['🌙', n.windDownStart, 'Wind-down']);
-    rows.push(['😴', n.plannedStart, 'Sleep begins']);
-    rows.push(['⏰', n.plannedEnd, 'Wake' + (n.plannedEnd === data.wakeAnchor ? ' (anchor)' : '')]);
+    var pb = blocksOf(n, 'planned');
+    if (n.windDownStart && pb.length <= 1) rows.push(['🌙', n.windDownStart, 'Wind-down']);
+    if (pb.length > 1) {
+      pb.forEach(function (b, i) {
+        // the wind-down belongs to the main block (the one the plan's start/end describe)
+        if (n.windDownStart && b.start === n.plannedStart && b.end === n.plannedEnd) rows.push(['🌙', n.windDownStart, 'Wind-down']);
+        rows.push(['😴', b.start, 'Sleep ' + (i + 1) + ' of ' + pb.length + ' · until ' + b.end + (b.hours != null ? ' (' + hFmt(b.hours) + ')' : '') +
+          (b.end === data.wakeAnchor ? ' · wake anchor' : '')]);
+      });
+    } else {
+      rows.push(['😴', n.plannedStart, 'Sleep begins']);
+      rows.push(['⏰', n.plannedEnd, 'Wake' + (n.plannedEnd === data.wakeAnchor ? ' (anchor)' : '')]);
+    }
     h += '<div class="plan-rows">' + rows.map(function (r, i) {
       return (i ? '<div class="plan-divider"></div>' : '') + '<div class="plan-row"><div class="icon">' + r[0] + '</div><div class="time">' + esc(r[1]) + '</div><div class="label">' + esc(r[2]) + '</div></div>';
     }).join('') + '</div>';
     var vs = n.plannedHours - M.floor;
-    h += '<div class="plan-foot"><span>Target <b>' + hFmt(n.plannedHours) + '</b></span><span>vs floor <b>' + fmtDelta(vs) + '</b></span></div>';
+    h += '<div class="plan-foot"><span>Target <b>' + hFmt(n.plannedHours) + '</b>' + (pb.length > 1 ? ' in ' + pb.length + ' blocks' : '') + '</span><span>vs floor <b>' + fmtDelta(vs) + '</b></span></div>';
     if (n.plannedNote) {
       var shortNote = n.plannedNote.length > 150 ? n.plannedNote.slice(0, 150).replace(/\s+\S*$/, '') + '…' : n.plannedNote;
       h += '<div class="plan-note" title="' + esc(n.plannedNote) + '">' + esc(shortNote) + '</div>';
@@ -237,8 +270,8 @@
       var d = w.delta, dc = d == null ? '' : deltaClass(d);
       var ctx = n.note || slipFlag(n) || n.quality || '';
       return '<tr><td class="date-cell">' + esc(w.label + ' → ' + dayLabel(addDays(w.date, 1))) + '</td>' +
-        '<td>' + esc(n.loggedStart) + '–' + esc(n.loggedEnd) + '</td>' +
-        '<td>' + hFmt(n.asleepHours) + (n.asleepFromDuration ? '<abbr title="No Polar data in the event — time in bed used">*</abbr>' : '') + '</td>' +
+        '<td>' + esc(rangesLabel(blocksOf(n, 'logged'))) + '</td>' +
+        '<td>' + hFmt(n.asleepHours) + (n.asleepFromDuration ? '<abbr title="' + EST_TITLE + '">*</abbr>' : '') + '</td>' +
         '<td class="score-cell">' + (n.score != null ? '<span class="mini-dot ' + scoreClass(n.score) + '"></span>' + n.score : '—') + '</td>' +
         '<td class="delta-cell ' + dc + '">' + (d == null ? '—' : fmtDelta(d) + ' (' + fmtPct(d, w.planned) + ')') + '</td>' +
         '<td class="note-cell">' + esc(ctx) + '</td></tr>';
