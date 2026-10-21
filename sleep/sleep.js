@@ -52,6 +52,19 @@
   }
   var EST_TITLE = 'No Polar data in the event — time in bed used';
 
+  // Split a night's asleep hours into the main block and the naps / extra blocks.
+  function splitOf(n) {
+    var lb = n && n.loggedBlocks, total = n.asleepHours, main = total, mainEst = n.asleepFromDuration, napEst = false;
+    if (lb && lb.length > 1) {
+      var mi = 0; lb.forEach(function (b, i) { if ((b.asleepHours || 0) > (lb[mi].asleepHours || 0)) mi = i; });
+      main = lb[mi].asleepHours != null ? lb[mi].asleepHours : total;
+      mainEst = !!lb[mi].asleepFromDuration;
+      lb.forEach(function (b, i) { if (i !== mi && b.asleepFromDuration) napEst = true; });
+    }
+    return { main: main, naps: Math.max(0, total - main), mainEst: mainEst, napEst: napEst };
+  }
+  function star(on) { return on ? '<abbr title="' + EST_TITLE + '">*</abbr>' : ''; }
+
   function slipFlag(n) {
     if (!n || !n.plannedStart || !n.loggedStart) return null;
     var diff = bedMinutes(n.loggedStart) - bedMinutes(n.plannedStart);
@@ -268,18 +281,25 @@
     body.innerHTML = rows.map(function (w) {
       var n = w.n;
       var d = w.delta, dc = d == null ? '' : deltaClass(d);
-      var ctx = n.note || slipFlag(n) || n.quality || '';
+      var sp = splitOf(n), ctx = n.note || slipFlag(n) || n.quality || '';
       return '<tr><td class="date-cell">' + esc(w.label + ' → ' + dayLabel(addDays(w.date, 1))) + '</td>' +
         '<td>' + esc(rangesLabel(blocksOf(n, 'logged'))) + '</td>' +
-        '<td>' + hFmt(n.asleepHours) + (n.asleepFromDuration ? '<abbr title="' + EST_TITLE + '">*</abbr>' : '') + '</td>' +
+        '<td>' + hFmt(sp.main) + star(sp.mainEst) + '</td>' +
+        '<td>' + (sp.naps > 0.0084 ? hFmt(sp.naps) + star(sp.napEst) : '<span class="empty">—</span>') + '</td>' +
+        '<td class="total-cell">' + hFmt(n.asleepHours) + star(n.asleepFromDuration) + '</td>' +
         '<td class="score-cell">' + (n.score != null ? '<span class="mini-dot ' + scoreClass(n.score) + '"></span>' + n.score : '—') + '</td>' +
         '<td class="delta-cell ' + dc + '">' + (d == null ? '—' : fmtDelta(d) + ' (' + fmtPct(d, w.planned) + ')') + '</td>' +
         '<td class="note-cell">' + esc(ctx) + '</td></tr>';
-    }).join('') || '<tr><td colspan="6" class="empty">No logged nights in the last 7.</td></tr>';
+    }).join('') || '<tr><td colspan="8" class="empty">No logged nights in the last 7.</td></tr>';
     var S = summarize(M);
     if (!S) { foot.innerHTML = ''; return; }
     var cls = deltaClass(S.sd);
-    foot.innerHTML = '<tr><td class="date-cell">' + S.n + ' nights, total / avg</td><td>—</td><td>' + hFmt(S.sl) + '<span class="log-summary-sub">avg ' + hFmt(S.sl / S.n) + '</span></td><td>—</td>' +
+    var rowsF = M.win.filter(function (w) { return w.delta != null; }), sN = 0, sP = 0;
+    rowsF.forEach(function (w) { var q = splitOf(w.n); sN += q.main; sP += q.naps; });
+    foot.innerHTML = '<tr><td class="date-cell">' + S.n + ' nights, total / avg</td><td>—</td>' +
+      '<td>' + hFmt(sN) + '<span class="log-summary-sub">avg ' + hFmt(sN / S.n) + '</span></td>' +
+      '<td>' + hFmt(sP) + '<span class="log-summary-sub">avg ' + hFmt(sP / S.n) + '</span></td>' +
+      '<td>' + hFmt(S.sl) + '<span class="log-summary-sub">avg ' + hFmt(S.sl / S.n) + '</span></td><td>—</td>' +
       '<td class="delta-cell ' + cls + '">' + fmtDelta(S.sd) + ' (' + fmtPct(S.sd, S.sp) + ')</td>' +
       '<td class="note-cell">Planned total ' + hFmt(S.sp) + '<span class="log-summary-sub">avg ' + hFmt(S.sp / S.n) + '</span></td></tr>';
   }
@@ -450,7 +470,8 @@
     renderWeek(); renderCumulative(M); renderTrends(M); renderTable(M);
     var when = new Date(data.generatedAt);
     $('footStamp').textContent = (DEMO ? 'DEMO — synthetic data, not real · ' : 'Live from Google Calendar · ') + 'updated ' +
-      when.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: data.timeZone || 'Europe/Rome' });
+      when.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: data.timeZone || 'Europe/Rome' }) +
+      (DEMO ? '' : ' · script: ' + (data.codeVersion || 'OLD — multi-block code not live'));
   }
 
   function banner(msg, isErr) { var b = $('banner'); b.hidden = !msg; b.textContent = msg || ''; b.className = 'banner' + (isErr ? ' err' : ''); }
